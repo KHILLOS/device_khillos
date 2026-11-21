@@ -1,0 +1,1 @@
+get_prop(hal_power_default, x86power_prop)

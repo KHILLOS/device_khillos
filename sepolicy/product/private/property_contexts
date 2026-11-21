@@ -1,0 +1,2 @@
+# Keep arbitrary strings so property_get_bool fallback behavior remains testable.
+power.nonboot-cpu-off  u:object_r:x86power_prop:s0 exact string

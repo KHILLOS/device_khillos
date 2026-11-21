@@ -1,0 +1,5 @@
+# The default is loaded from the product build properties by init.
+set_prop(init, x86power_prop)
+
+# The supervised validation executable runs in the adb shell domain.
+set_prop(shell, x86power_prop)

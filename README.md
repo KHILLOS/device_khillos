@@ -1,6 +1,8 @@
 # KhillOS x86_64 validation product
 
-`khillos_cf_x86_64_pc` inherits the upstream Android 17 Cuttlefish PC product and adds only the x86power HAL, its supervised smoke executable, and the two properties required before boot:
+`khillos_cf_x86_64_pc` inherits the upstream Android 17 Cuttlefish PC product and adds the x86power HAL, its supervised smoke executable, the two properties required before boot, and narrowly scoped SELinux policy. The dedicated `PRODUCT_DEVICE := khillos` BoardConfig inherits the upstream x86_64 board; generated files are under `out/target/product/khillos`.
+
+The product-owned `power.nonboot-cpu-off` control is declared once as `system_public_prop` in system_ext public policy so product and vendor rules can reference the same type. Its value remains an arbitrary string to preserve `property_get_bool` fallback behavior. Vendor property-namespace checks remain enabled.
 
 - `ro.hardware.power=x86`
 - `power.nonboot-cpu-off=1`

@@ -1,0 +1,2 @@
+# System-owned control shared with the product validation shell and vendor HAL.
+system_public_prop(x86power_prop)
