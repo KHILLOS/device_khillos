@@ -7,12 +7,21 @@ The product-owned `power.nonboot-cpu-off` control is declared once as `system_pu
 - `ro.hardware.power=x86`
 - `power.nonboot-cpu-off=1`
 
-This is validation infrastructure, not a BlissOS ISO and not evidence of a successful boot. Build with separate lunch arguments:
+Build the Android images and BlissOS-method live ISO with separate lunch arguments:
 
 ```sh
 source build/envsetup.sh
 lunch khillos_cf_x86_64_pc cp2a userdebug
-m -j8
+m blissify iso_img -j8
 ```
 
-The current AOSP build is allowed to finish first. The KhillOS product then reuses its intermediates and replaces the product images in the same output tree, avoiding a second full build. The AOSP-only image is not needed for this validation.
+`iso_img` is a Soong genrule and `blissify` is its phony dependency. The ISO uses GRUB **Live Boot Android**, a raw-extent EROFS container, and a GPT system image. A static helper restores by-name block nodes after Android mounts its fresh `/dev` tmpfs. For QEMU validation, create the separate writable data disk and use the host runner:
+
+```sh
+bash device/khillos/build_live_data_disk.sh \
+    out/target/product/khillos /mnt/aosp/UPSTREAM/guest/live-data.img
+bash /mnt/aosp/KHILLOS_TOOLS/run_live_iso_guest.sh \
+    /mnt/aosp/KHILLOS_NOTES/hardware/x86power/live-iso
+```
+
+The behavior-specific live boot passed: upstream Power AIDL VTS reports 9 passed, 14 expected skips, and 0 failures; direct AIDL CPU transitions and all legacy smoke cases pass with exact restoration. Evidence is in `/mnt/aosp/KHILLOS_NOTES/hardware/x86power/live-iso-final-verification.md` and its referenced logs. A separate `SystemSensorManager.nativeCreate` watchdog prevents a stable full-framework claim; no SELinux or validation check is disabled.

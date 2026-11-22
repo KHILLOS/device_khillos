@@ -1,0 +1,35 @@
+// KhillOS live-media targets, following the BlissOS GRUB/ISO boot method.
+
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+genrule {
+    name: "iso_img",
+    out: ["khillos-android17-live.iso"],
+    product_specific: true,
+    srcs: [
+        "build_live_iso.sh",
+        "build_live_system_disk.sh",
+        "live/init",
+        "live/byname_helper.c",
+        "live/grub.cfg",
+    ],
+    required: [
+        "khillos_cf_x86_64_pc_generated_boot_image",
+        "khillos_cf_x86_64_pc_generated_device",
+        "khillos_cf_x86_64_pc_generated_fastboot",
+        "khillos_cf_x86_64_pc_generated_init_boot_image",
+        "khillos_cf_x86_64_pc_generated_super_image",
+        "khillos_cf_x86_64_pc_generated_vendor_boot_image",
+    ],
+    cmd: "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin " +
+         "LIVE_WORK=$(out).work bash $(location build_live_iso.sh) " +
+         "/mnt/aosp/UPSTREAM/aosp/out/target/product/khillos $(out)",
+}
+
+phony {
+    name: "blissify",
+    product_specific: true,
+    required: ["iso_img"],
+}

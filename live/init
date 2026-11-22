@@ -1,0 +1,135 @@
+#!/bin/busybox sh
+# KhillOS live-media handoff for Android 17 dynamic partitions.
+# Modeled on BlissOS aaropa: mount live media, expose image-backed block
+# devices, then switch to the genuine Android ramdisk and /init.
+
+PATH=/bin
+export PATH
+
+/bin/busybox mknod /dev/kmsg c 1 11
+/bin/busybox echo 'khillos-live: entered live init' > /dev/kmsg
+
+BB=/bin/busybox
+log() {
+    $BB echo "khillos-live: $*" > /dev/kmsg
+    if [ -e /dev/hvc1 ]; then
+        $BB echo "khillos-live: $*" > /dev/hvc1
+    fi
+}
+
+fail() {
+    log "ERROR: $*"
+    /bin/busybox cat /proc/filesystems | while read line; do
+        /bin/busybox echo "khillos-live: fs $line" > /dev/kmsg
+    done
+    /bin/busybox sleep 300
+    /bin/busybox poweroff -f
+}
+
+/bin/busybox echo 'khillos-live: mounting proc' > /dev/kmsg
+/bin/busybox mount -t proc proc /proc || fail "mount proc"
+/bin/busybox echo 'khillos-live: mounting sysfs' > /dev/kmsg
+/bin/busybox mount -t sysfs sysfs /sys || fail "mount sysfs"
+/bin/busybox echo 'khillos-live: mounting devtmpfs' > /dev/kmsg
+/bin/busybox mount -t devtmpfs devtmpfs /dev || log "devtmpfs is already mounted"
+/bin/busybox echo 'khillos-live: devtmpfs mounted' > /dev/kmsg
+/bin/busybox mount --make-rprivate / || fail "make live mounts private"
+/bin/busybox mkdir -p /mnt/images /android
+/bin/busybox mount -t tmpfs tmpfs /mnt || fail "mount live tmpfs"
+/bin/busybox mount -t tmpfs -o mode=0755 tmpfs /android || fail "mount Android root tmpfs"
+/bin/busybox cp -a /android_root/. /android/ || fail "populate Android root tmpfs"
+
+# Use nonblocking kernel messages until Android opens its virtio console.
+# Opening ttyS0 directly can wait for carrier and leave PID 1 stuck.
+exec > /dev/kmsg 2>&1
+set -x
+
+log "starting Android 17 live boot with raw-extent EROFS images"
+
+# Android's first-stage loader normally performs these steps. The live init
+# needs block and console devices earlier, while it locates the ISO extent.
+for module in virtio_blk.ko virtio_console.ko virtio_pci_modern_dev.ko \
+              virtio_pci_legacy_dev.ko virtio_pci.ko vmw_vsock_virtio_transport.ko; do
+    /bin/busybox insmod "/android_root/lib/modules/$module" || fail "load $module"
+done
+/bin/busybox --install -s /bin
+/bin/busybox echo /bin/mdev > /proc/sys/kernel/hotplug
+/bin/busybox mdev -s
+for attempt in $(/bin/busybox seq 1 30); do
+    [ -b /dev/vdb ] && [ -b /dev/vda1 ] && break
+    /bin/busybox sleep 1
+done
+
+loop_index=0
+attach_loop() {
+    source_file=$1
+    offset=${2:-0}
+    partscan=${3:-0}
+    while [ "$loop_index" -lt 32 ]; do
+        loop_device=/dev/loop$loop_index
+        loop_index=$((loop_index + 1))
+        [ -e "$loop_device" ] || /bin/busybox mknod "$loop_device" b 7 $((loop_index - 1))
+        if [ "$partscan" -gt 0 ]; then
+            if /bin/busybox losetup -r -P "$loop_device" "$source_file"; then
+                attached_loop=$loop_device
+                return 0
+            fi
+        elif [ "$offset" -gt 0 ]; then
+            if /bin/busybox losetup -r -o "$offset" "$loop_device" "$source_file"; then
+                attached_loop=$loop_device
+                return 0
+            fi
+        else
+            if /bin/busybox losetup -r "$loop_device" "$source_file"; then
+                attached_loop=$loop_device
+                return 0
+            fi
+        fi
+    done
+    return 1
+}
+
+images_lba=
+for argument in $(/bin/busybox cat /proc/cmdline); do
+    case "$argument" in
+        khillos.images_lba=*) images_lba=${argument##*=} ;;
+    esac
+done
+[ -n "$images_lba" ] || fail "missing khillos.images_lba"
+media_offset=$((10#$images_lba * 2048))
+media_loop=
+for device in /dev/vdb /dev/vdc /dev/sr0 /dev/sr1; do
+    if [ -b "$device" ] && attach_loop "$device" "$media_offset"; then
+        media_loop=$attached_loop
+        media_device=$device
+        break
+    fi
+done
+[ -n "$media_loop" ] || fail "attach EROFS extent from live media"
+/bin/busybox mkdir -p /mnt/images
+/bin/busybox mount -t erofs -o ro "$media_loop" /mnt/images || fail "mount images.efs (erofs)"
+log "mounted verified Android image container from $media_device LBA $images_lba"
+
+# Keep a GPT system disk so every required partition has explicit sysfs
+# metadata and can be represented by a real block node after Android's tmpfs.
+attach_loop /mnt/images/system.raw 0 1 || fail "attach GPT system.raw"
+system_loop=$attached_loop
+/bin/busybox mdev -s
+log "attached Android GPT system disk through $system_loop"
+
+system_name=${system_loop##*/}
+
+# Only these writable data partitions are supplied by the QEMU data disk.
+for attempt in $(/bin/busybox seq 1 30); do
+    [ -b /dev/vda1 ] && [ -b /dev/vda2 ] && [ -b /dev/vda3 ] && break
+    /bin/busybox sleep 1
+done
+[ -b /dev/vda1 ] && [ -b /dev/vda2 ] && [ -b /dev/vda3 ] || fail "writable data partitions are missing"
+
+log "switching to Android first-stage init"
+/bin/busybox echo > /proc/sys/kernel/hotplug
+log "switch_root_pid=$$"
+/bin/byname_helper "$system_name" &
+export ANDROID_ROOT=/system
+exec /bin/busybox switch_root /android /init
+fail "switch_root returned"
