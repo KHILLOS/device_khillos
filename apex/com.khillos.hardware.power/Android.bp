@@ -1,0 +1,37 @@
+// Replacement for the upstream stub power APEX. x86power-service is installed
+// directly on vendor; this APEX preserves the separate power-stats service.
+
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+genrule {
+    name: "com.khillos.hardware.power.stats.rc-srcs",
+    srcs: [":android.hardware.power.stats.rc"],
+    out: ["com.khillos.hardware.power.stats.rc"],
+    cmd: "sed -E 's@/vendor/bin/@/apex/com.khillos.hardware.power/bin/@' $(in) > $(out)",
+}
+
+prebuilt_etc {
+    name: "com.khillos.hardware.power.stats.rc",
+    src: ":com.khillos.hardware.power.stats.rc-srcs",
+    installable: false,
+}
+
+apex {
+    name: "com.khillos.hardware.power",
+    manifest: "apex_manifest.json",
+    key: "com.android.hardware.key",
+    certificate: ":com.android.hardware.certificate",
+    file_contexts: "file_contexts",
+    updatable: false,
+    vendor: true,
+    overrides: ["com.android.hardware.power"],
+    binaries: [
+        "android.hardware.power.stats-service.example",
+    ],
+    prebuilts: [
+        "com.khillos.hardware.power.stats.rc",
+        "android.hardware.power.stats.xml",
+    ],
+}

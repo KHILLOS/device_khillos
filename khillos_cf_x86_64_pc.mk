@@ -13,8 +13,12 @@ PRODUCT_VENDOR_PROPERTIES += ro.hardware.power=x86
 PRODUCT_PRODUCT_PROPERTIES += power.nonboot-cpu-off=1
 
 PRODUCT_PACKAGES += \
+    com.khillos.hardware.power \
     power.x86 \
-    x86power_smoke
+    power.x86.vendor \
+    x86power-service \
+    x86power_smoke \
+    VtsHalPowerTargetTest
 
 ifeq ($(TARGET_PRODUCT),khillos_cf_x86_64_pc)
 PRODUCT_SOONG_ONLY := $(RELEASE_SOONG_ONLY_CUTTLEFISH)

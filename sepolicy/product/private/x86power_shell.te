@@ -1,5 +1,6 @@
 # The default is loaded from the product build properties by init.
 set_prop(init, x86power_prop)
 
-# The supervised validation executable runs in the adb shell domain.
+# The supervised validation executable and upstream VTS run in the shell domain.
 set_prop(shell, x86power_prop)
+hal_client_domain(shell, hal_power)
